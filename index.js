@@ -1,5 +1,6 @@
 const fetch = require('node-fetch');
 const program = require('commander');
+const logger = require('winston');
 
 const dataChannelConnection = require('./datachannel.js');
 
