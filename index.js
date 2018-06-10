@@ -1,6 +1,7 @@
 const fetch = require('node-fetch');
 const program = require('commander');
 const logger = require('winston');
+const fs = require('fs');
 
 const dataChannelConnection = require('./datachannel.js');
 
@@ -10,6 +11,7 @@ program
     .option('-uw, --wsUrl <url>', 'websocket url used for signalling')
     .option('-m, --messages <n>', 'number of messages to be send')
     .option('-i, --interval <n>', 'interval in which the messages are send')
+    .option('-p, --payload <json>', 'location of json blob to be used for communicating')
     .option('-o, --ordered <b>', 'specify the DataChannel to be ordered or not')
     .option('-cc, --concurrent <b>', 'specify the amount of concurrent connections per process')
     .option('-rtx, --retransmit-times <n>', 'specify number of retransmission times on each message')
@@ -23,13 +25,11 @@ const defaultConfiguration = {
     ws_url: "ws://localhost:9000/websocket",
     concurrent_connections: 1,
     messages: 1,
-    interval: 300,
+    interval: 350,
     ordered: true,
     maxRetransmit: 0,
     payload: {}
 };
-
-
 
 const configuration = {
     url: program.url || defaultConfiguration.url,
@@ -39,7 +39,7 @@ const configuration = {
     interval: program.interval || defaultConfiguration.interval,
     ordered: program.ordered || defaultConfiguration.ordered,
     maxRetransmit: program.retransmitTimes || defaultConfiguration.maxRetransmit,
-    payload: defaultConfiguration.payload
+    payload: (program.payload && loadJSON(program.payload)) || defaultConfiguration.payload
 };
 
 const hooks = {
@@ -65,4 +65,17 @@ function postData(payload) {
         },
         method: 'POST',
     })
+}
+
+function loadJSON(location) {
+    try {
+        const filepath = `${__dirname}/${location}`;
+        const data = fs.readFileSync(filepath);
+        logger.info(`Loaded and parsed payload file: '${filepath}'`);
+        return JSON.parse(data.toString());
+    }
+    catch (e) {
+        logger.error("loadJSON error: " + e.toString());
+        process.exit(1)
+    }
 }
