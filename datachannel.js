@@ -6,9 +6,7 @@ async function tryDataChannel(configuration, hookContainer) {
     const page = await browser.newPage();
     await page.goto(configuration.url);
 
-    const stringified = {
-        onSend: hookContainer.onSend.toString()
-    };
+    const stringified = {};
 
     const result = await websocketSession(configuration, stringified);
 
@@ -18,7 +16,6 @@ async function tryDataChannel(configuration, hookContainer) {
 
     function websocketSession(conf, innerFunctions) {
         return page.evaluate((conf, fn) => {
-            const onSend = new Function(' return (' + fn.onSend + ').apply(null, arguments)');
             function websocket_call() {
                 const peerConnection = new RTCPeerConnection();
                 const dataChannel = peerConnection.createDataChannel("channel",
@@ -71,7 +68,38 @@ async function tryDataChannel(configuration, hookContainer) {
                 })
                     .then((dc) => {
                         return new Promise((res, rej) => {
-                            onSend.call(null, res, rej, dc, conf)
+                            const index = conf.messages;
+                            let received = 0;
+                            let result = [];
+
+
+                            let timerIndex = 0;
+
+                            const timer = setInterval(() => {
+
+                                if(timerIndex === index) {
+                                    clearTimeout(timer);
+                                } else {
+                                    const payload = conf.payload;
+                                    payload.time_send = Date.now();
+                                    dc.send(JSON.stringify(payload));
+                                    timerIndex += 1;
+                                }
+                            }, conf.interval);
+
+                            dc.onerror = (err) => {
+                                rej(err);
+                            };
+
+                            dc.onmessage = (event) => {
+                                result.push(JSON.parse(event.data));
+                                received += 1;
+
+                                if(received === conf.messages) {
+                                    dc.close();
+                                    res(result);
+                                }
+                            }
                         });
                     })
             }

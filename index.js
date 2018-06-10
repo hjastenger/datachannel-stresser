@@ -30,11 +30,11 @@ const configuration = {
     messages: 1,
     interval: 300,
     ordered: false,
-    maxRetransmit: 0
+    maxRetransmit: 0,
+    payload: { data: "working" }
 };
 
 const hooks = {
-    onSend: send,
     onResult: onResult
 };
 
@@ -50,37 +50,4 @@ function postData(payload) {
         },
         method: 'POST',
     })
-}
-
-function send(res, rej, dc, conf) {
-    const index = conf.messages;
-    let received = 0;
-    let result = [];
-
-
-    let timerIndex = 0;
-
-    const timer = setInterval(() => {
-
-        if(timerIndex === index) {
-            clearTimeout(timer);
-        } else {
-            const payload = {
-                data: "working",
-                time_send: Date.now()
-            };
-            dc.send(JSON.stringify(payload));
-            timerIndex += 1;
-        }
-    }, conf.interval);
-
-    dc.onmessage = (event) => {
-        result.push(JSON.parse(event.data));
-        received += 1;
-
-        if(received === conf.messages) {
-            dc.close();
-            res(result);
-        }
-    }
 }
