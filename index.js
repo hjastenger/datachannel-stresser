@@ -1,9 +1,38 @@
 const fetch = require('node-fetch');
 const program = require('commander');
-const logger = require('winston');
+const winston = require('winston');
+
+const {
+    createLogger,
+    format,
+    transports
+} = winston;
+
+const {
+    printf,
+    combine,
+    timestamp
+} = format;
+
 const fs = require('fs');
 
 const dataChannelConnection = require('./datachannel.js');
+
+const myFormat = printf(info => {
+    return `${info.timestamp} ${info.level}: ${info.message}`;
+});
+
+const logger = createLogger({
+    format: combine(
+        timestamp(),
+        myFormat
+    ),
+    transports: [
+        new transports.File({ filename: 'error.log', level: 'error' }),
+        new transports.File({ filename: 'combined.log' }),
+        new transports.Console()
+    ]
+});
 
 program
     .version('0.1.0')
