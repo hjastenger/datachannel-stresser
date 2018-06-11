@@ -15,6 +15,7 @@ const {
 } = format;
 
 const fs = require('fs');
+const cluster = require('cluster');
 
 const dataChannelConnection = require('./datachannel.js');
 
@@ -42,6 +43,7 @@ program
     .option('-i, --interval <n>', 'interval in which the messages are send')
     .option('-p, --payload <json>', 'location of json blob to be used for communicating')
     .option('-o, --ordered <b>', 'specify the DataChannel to be ordered or not')
+    .option('-cs, --cluster-size <b>', 'specify how many times the cluster should be forked')
     .option('-cc, --concurrent <b>', 'specify the amount of concurrent connections per process')
     .option('-rtx, --retransmit-times <n>', 'specify number of retransmission times on each message')
     .option('-rto, --retransmit-timeout <n>', 'specify miliseconds before dropping a message')
@@ -52,9 +54,10 @@ program.parse(process.argv);
 const defaultConfiguration = {
     url: "http://localhost:9000",
     ws_url: "ws://localhost:9000/websocket",
-    concurrent_connections: 1,
-    messages: 1,
-    interval: 350,
+    concurrent_connections: 5,
+    cluster_size: 2,
+    messages: 2,
+    interval: 500,
     ordered: true,
     maxRetransmit: 0,
     payload: {}
@@ -68,19 +71,49 @@ const configuration = {
     interval: program.interval || defaultConfiguration.interval,
     ordered: program.ordered || defaultConfiguration.ordered,
     maxRetransmit: program.retransmitTimes || defaultConfiguration.maxRetransmit,
-    payload: (program.payload && loadJSON(program.payload)) || defaultConfiguration.payload
+    payload: (program.payload && loadJSON(program.payload)) || defaultConfiguration.payload,
+    cluster_size: program.clusterSize || defaultConfiguration.cluster_size
 };
 
 const hooks = {
     onResult: onResult
 };
 
-dataChannelConnection(configuration, hooks);
+if (cluster.isMaster) {
+    console.log(`Master ${process.pid} is running`);
 
-function onResult(i, conf) {
+    // Fork workers.
+    for (let i = 0; i < configuration.cluster_size; i++) {
+        cluster.fork();
+    }
+
+    cluster.on('exit', (worker, code, signal) => {
+        console.log(`Worker ${worker.process.pid} died`);
+    });
+} else {
+    // Workers can share any TCP connection
+    // In this case it is an HTTP server
+    const worker = cluster.worker;
+    dataChannelConnection(configuration, hooks)
+        .then((e) => {
+            worker.kill(1);
+        })
+        .catch((e) => {
+            logger.error(e.message);
+            worker.kill(1);
+        });
+    console.log(`Worker ${process.pid} started`);
+
+}
+
+async function onResult(i, conf) {
     const responseTimes = i.map((_) => (_.time_acquired - _.time_send));
     return Promise.all(responseTimes.map((res) => {
-        return postData(`response_time,protocol=${conf.protocol},concurrency=${conf.concurrent_connections},messages=${conf.messages},interval=${conf.interval} value=${res}`)
+        const query = `response_time,protocol=${conf.protocol},`+
+            `concurrency=${conf.concurrent_connections},`+
+            `messages=${conf.messages},`+
+            `interval=${conf.interval} value=${res}`;
+        return postData(query)
     }));
 }
 
