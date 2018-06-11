@@ -10,8 +10,9 @@ async function tryDataChannel(configuration, hookContainer) {
 
     const result = await websocketSession(configuration, stringified);
 
-    result.map((result) => hookContainer.onResult(result, configuration));
+    await Promise.all(result.map((result) => hookContainer.onResult(result, configuration)));
 
+    await page.close();
     await browser.close();
 
     function websocketSession(conf, innerFunctions) {
