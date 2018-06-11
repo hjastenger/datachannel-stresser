@@ -37,7 +37,7 @@ const logger = createLogger({
 program
     .version('0.1.0')
     .option('-u, --url <url>', 'Website URL')
-    .option('-uw, --wsUrl <url>', 'websocket url used for signalling')
+    .option('-ws, --wsUrl <url>', 'websocket url used for signalling')
     .option('-m, --messages <n>', 'number of messages to be send')
     .option('-i, --interval <n>', 'interval in which the messages are send')
     .option('-p, --payload <json>', 'location of json blob to be used for communicating')
