@@ -1,7 +1,6 @@
 const puppeteer = require('puppeteer');
 
-async function datachannel(configuration, hookContainer) {
-    configuration.protocol = 'datachannel';
+async function datachannel(configuration) {
     const browser = await puppeteer.launch();
 
     const pages = await Promise.all(Array.from({length: configuration.concurrent_connections}, (x, i) => i).map(() => {

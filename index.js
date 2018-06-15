@@ -34,18 +34,25 @@ const logger = createLogger({
     ]
 });
 
+// Please don't re-use this.
+function parseBoolean(value) {
+    return value === 'true';
+}
+
 program
     .version('0.1.0')
     .option('-u, --url <url>', 'Website URL')
     .option('-w, --wsUrl <url>', 'websocket url used for signalling')
-    .option('-m, --messages <n>', 'number of messages to be send')
-    .option('-i, --interval <n>', 'interval in which the messages are send')
-    .option('-d, --payload <json>', 'location of json blob to be used for communicating')
-    .option('-d, --payload <json>', 'location of json blob to be used for communicating')
-    .option('-p, --protocol <[datachannel | websocket | post]>', 'specify the DataChannel to be ordered or not')
-    .option('-cc, --concurrent <b>', 'specify the amount of concurrent connections per process')
-    .option('-rtx, --retransmit-times <n>', 'specify number of retransmission times on each message')
-    .option('-rto, --retransmit-timeout <n>', 'specify miliseconds before dropping a message')
+    .option('-m, --messages <int>', 'number of messages to be send', parseInt)
+    .option('-i, --interval <int>', 'interval in which the messages are send', parseInt)
+    .option('-d, --payload <file>', 'location of json blob to be used for communicating')
+    .option('-o, --ordered <boolean>', 'whether to send the messages in an ordered fashion', parseBoolean)
+    .option('-p, --protocol <datachannel | websocket | post]>', 'specify the DataChannel to be ordered or not')
+    .option('-c, --concurrent <int>', 'specify the amount of concurrent connections per process', parseInt)
+    .option('-x, --retransmit-times <int>', 'specify number of retransmission times on each message', parseInt)
+    .option('-y, --retransmit-timeout <int>', 'specify miliseconds before dropping a message', parseInt)
+    .option('-z, --optional <string>', 'specify number of retransmission times on each message')
+
 ;
 
 program.parse(process.argv);
@@ -53,13 +60,18 @@ program.parse(process.argv);
 const defaultConfiguration = {
     url: "http://localhost:9000",
     ws_url: "ws://localhost:9000/websocket",
-    concurrent_connections: 5,
-    messages: 100,
+    protocol: "datachannel",
+    concurrent_connections: 15,
+    messages: 10,
     interval: 300,
     ordered: true,
-    maxRetransmit: 0,
     payload: {}
 };
+
+if(program.retransmitTimes && program.retransmitTimeout) {
+    logger.error("--retransmit-times && retransmit-timeout can't both be active at the same time.");
+    process.kill(1);
+}
 
 const configuration = {
     url: program.url || defaultConfiguration.url,
@@ -67,71 +79,88 @@ const configuration = {
     concurrent_connections: program.concurrent || defaultConfiguration.concurrent_connections,
     messages: program.messages || defaultConfiguration.messages,
     interval: program.interval || defaultConfiguration.interval,
-    ordered: program.ordered || defaultConfiguration.ordered,
-    maxRetransmit: program.retransmitTimes || defaultConfiguration.maxRetransmit,
-    payload: (program.payload && loadJSON(program.payload)) || defaultConfiguration.payload
+    ordered: program.ordered && defaultConfiguration.ordered,
+    retransmits: program.retransmitTimes,
+    retransmitTimes: program.retransmitTimeout,
+    payload: (program.payload && loadJSON(program.payload)) || defaultConfiguration.payload,
+    protocol: program.protocol || defaultConfiguration.protocol,
+    optional: program.optional,
 };
 
-const hooks = {
-    onResult: onResult
-};
+function createTagList(conf) {
+    const blacklist = ["url", "ws_url", "payload"];
+    const tags = [];
 
-dataChannelConnection(configuration, hooks)
-    .then((data) => {
-        return Promise.all(data.map((connection) => {
-            return onResult(connection, configuration);
-        }));
-    }).then(() => {
-        logger.info("InfluxDB query successfully inserted");
-    }).then(() => {
-        const tags = ["experiment"];
-        for(const attr in configuration) {
-            const blacklist = ["url", "ws_url", "payload"];
-            if(configuration.hasOwnProperty(attr) && !blacklist.includes(attr)) {
-                tags.push(`${attr}=${configuration[attr]}`)
-            }
+    for(const attr in conf) {
+        if(conf.hasOwnProperty(attr) && !blacklist.includes(attr) && conf[attr] !== undefined) {
+            tags.push(`${attr}=${conf[attr]}`)
         }
+    }
+    return tags;
+}
 
-        return fetch("http://159.65.204.118:3000/api/annotations", {
-            body: JSON.stringify({
-                "time": insertion,
-                "timeEnd": last_insertion,
-                "isRegion":true,
-                "tags":tags,
-                "panelId":2,
-                "text":"Annotation Description"
-            }),
-            headers: {
-                'Authorization': 'Bearer eyJrIjoicjFaZ0Rub0w3YTJTUlNmb25FVE9uY2kyc0xvOG9OMFciLCJuIjoic29tZXRoaW5nIiwiaWQiOjF9',
-                'Content-Type': 'application/json',
-                'Accept': 'application/json'
-            },
-            method: 'POST',
-        }).then(() => {
-            logger.info("Grafana annotation successfully inserted");
-        })
-    }).catch((e) => {
-        console.log("caught error");
-        logger.error(e.message);
-    });
+async function execute(conf) {
+    let result = [];
+    switch(configuration.protocol) {
+        case "datachannel":
+            result = await executeDataChannel(conf);
+            break;
+        default:
+            logger.error(`protocol ${program.protocol} not recognized!`);
+            process.exit(1);
+    }
 
-let insertion;
-let last_insertion;
+    const tags = createTagList(conf);
+    tags.push("experiment");
+    const times = { start: [], end:[] };
 
-async function onResult(i, conf) {
+    await Promise.all(result.map((connection) => {
+        times.start.push(connection[0].time_received);
+        times.end.push(connection[configuration.messages-1].time_received);
+
+        return onResult(connection, conf);
+    }));
+
+    logger.info("InfluxDB query successfully inserted");
+    await postAnnotation(Math.min(...times.start), Math.max(...times.end), tags);
+    logger.info("Grafana annotation successfully inserted");
+
+}
+
+async function executeDataChannel(conf) {
+    return await dataChannelConnection(conf);
+}
+
+function onResult(i, conf) {
+    const tagList = createTagList(conf);
+
     const qstring = i.reduce((acc, cv) => {
         const diff = cv.time_received - cv.time_send;
-        // acc += `test_latency,ticket=${ticker},protocol=${conf.protocol},concurrency=${conf.concurrent_connections},messages=${conf.messages},interval=${conf.interval} value=${diff} ${(cv.time_received*1e6) }\n`;
-        acc += `test_latency,protocol=${conf.protocol},concurrency=${conf.concurrent_connections},messages=${conf.messages},interval=${conf.interval} value=${diff} ${(cv.time_received) }\n`;
-        if(!insertion) {
-            insertion = cv.time_received;
-        }
-        last_insertion = cv.time_received;
+        acc += `test_latency,${tagList.join(",")} value=${diff} ${cv.time_received}\n`;
         return acc;
     }, "");
 
-
     return postData(qstring);
+}
+
+function postAnnotation(start, end, tags) {
+    return fetch("http://159.65.204.118:3000/api/annotations", {
+        body: JSON.stringify({
+            "time": start,
+            "timeEnd": end,
+            "isRegion": true,
+            "tags": tags,
+            "panelId": 2,
+            "text": "Annotation Description"
+        }),
+        headers: {
+            'Authorization': 'Bearer eyJrIjoicjFaZ0Rub0w3YTJTUlNmb25FVE9uY2kyc0xvOG9OMFciLCJuIjoic29tZXRoaW5nIiwiaWQiOjF9',
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+        },
+        method: 'POST',
+    });
+
 }
 
 function postData(payload) {
@@ -159,3 +188,5 @@ function loadJSON(location) {
         process.exit(1)
     }
 }
+
+execute(configuration);
