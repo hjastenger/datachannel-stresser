@@ -115,10 +115,10 @@ async function execute(conf) {
     const times = { start: [], end:[] };
 
     await Promise.all(result.map((connection) => {
-        times.start.push(connection[0].time_received);
-        times.end.push(connection[configuration.messages-1].time_received);
+        times.start.push(connection.result[0].time_received);
+        times.end.push(connection.result[configuration.messages-1].time_received);
 
-        return onResult(connection, conf);
+        return onResult(connection.result, conf);
     }));
 
     logger.info("InfluxDB query successfully inserted");
@@ -160,7 +160,6 @@ function postAnnotation(start, end, tags) {
         },
         method: 'POST',
     });
-
 }
 
 function postData(payload) {
@@ -173,7 +172,6 @@ function postData(payload) {
         },
         method: 'POST',
     })
-
 }
 
 function loadJSON(location) {

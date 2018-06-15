@@ -11,12 +11,14 @@ async function datachannel(configuration) {
 
     function inPage(conf) {
         return new Promise((res, rej) => {
+            const cmd = {};
             const peerConnection = new RTCPeerConnection();
             const dataChannel = peerConnection.createDataChannel("channel",
                 { ordered: conf.ordered });
 
             const ws = new WebSocket(conf.ws_url);
             ws.onopen = () => {
+                cmd.start_signalling = Date.now();
                 peerConnection.createOffer()
                     .then(function (desc) {
                         return peerConnection.setLocalDescription(desc);
@@ -34,6 +36,7 @@ async function datachannel(configuration) {
             ws.onmessage = function (event) {
                 const data = JSON.parse(event.data);
                 if (data.type === "offer") {
+                    cmd.received_offer = Date.now();
                     const sd = new RTCSessionDescription({type: "answer", sdp: data.answer});
                     peerConnection.setRemoteDescription(sd).then(function (sess) {
                         console.log("Set remote with success ");
@@ -55,15 +58,16 @@ async function datachannel(configuration) {
             };
 
             dataChannel.onopen = function (e) {
+                cmd.datachannel_opened = Date.now();
                 ws.close();
-                res(dataChannel);
+                res({ dc: dataChannel, cmd: cmd });
             };
-        }).then((dc) => {
+        }).then((og) => {
             return new Promise((res, rej) => {
 
                 const index = conf.messages;
                 let received = 0;
-                let result = [];
+                og.result = [];
 
 
                 let timerIndex = 0;
@@ -77,24 +81,24 @@ async function datachannel(configuration) {
                         payload._metadata = {};
                         payload.time_send = Date.now();
                         payload._metadata.time_send = Date.now();
-                        dc.send(JSON.stringify(payload));
+                        og.dc.send(JSON.stringify(payload));
                         timerIndex += 1;
                     }
                 }, conf.interval);
 
-                dc.onerror = (err) => {
+                og.dc.onerror = (err) => {
                     rej(err);
                 };
 
-                dc.onmessage = (event) => {
+                og.dc.onmessage = (event) => {
                     const event_data = JSON.parse(event.data);
                     event_data.time_received = Date.now();
-                    result.push(event_data);
+                    og.result.push(event_data);
                     received += 1;
 
                     if (received === conf.messages) {
-                        dc.close();
-                        res(result);
+                        og.dc.close();
+                        res(og);
                     }
                 };
             });
