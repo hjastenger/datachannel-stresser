@@ -10,11 +10,23 @@ async function datachannel(configuration) {
     await Promise.all(pages.map((p) => p.goto(configuration.url)));
 
     function inPage(conf) {
+        function getReliabilityConfiguration() {
+            const relConf = { ordered: conf.ordered };
+            if(conf.retransmits) {
+                relConf.maxRetransmits = conf.retransmits;
+            } else if(conf.retransmitTimes) {
+                relConf.maxRetransmitTimes = conf.retransmitTimes;
+            }
+            return relConf;
+        }
+
         return new Promise((res, rej) => {
             const cmd = {};
             const peerConnection = new RTCPeerConnection();
-            const dataChannel = peerConnection.createDataChannel("channel",
-                { ordered: conf.ordered });
+
+            const reliability = getReliabilityConfiguration();
+
+            const dataChannel = peerConnection.createDataChannel("channel", reliability);
 
             const ws = new WebSocket(conf.ws_url);
             ws.onopen = () => {
@@ -38,13 +50,13 @@ async function datachannel(configuration) {
                 if (data.type === "offer") {
                     cmd.received_offer = Date.now();
                     const sd = new RTCSessionDescription({type: "answer", sdp: data.answer});
-                    peerConnection.setRemoteDescription(sd).then(function (sess) {
-                        console.log("Set remote with success ");
-                    }).catch(function (e) {
-                        rej(e);
-                    });
+                    peerConnection.setRemoteDescription(sd)
+                        .catch(function (e) {
+                            rej(e);
+                        });
                 }
             };
+
             peerConnection.onicecandidate = function (e) {
                 console.log('IceCand: ' + JSON.stringify(e));
                 if (peerConnection.iceGatheringState === 'complete') {
