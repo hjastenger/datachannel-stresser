@@ -61,7 +61,7 @@ const defaultConfiguration = {
     url: "http://localhost:9000",
     ws_url: "ws://localhost:9000/websocket",
     protocol: "datachannel",
-    concurrent_connections: 15,
+    concurrent_connections: 1,
     messages: 10,
     interval: 300,
     ordered: true,
@@ -118,25 +118,30 @@ async function execute(conf) {
         times.start.push(connection.result[0].time_received);
         times.end.push(connection.result[configuration.messages-1].time_received);
 
-        return onResult(connection.result, conf);
+        return onResult(connection, conf);
     }));
 
     logger.info("InfluxDB query successfully inserted");
     await postAnnotation(Math.min(...times.start), Math.max(...times.end), tags);
     logger.info("Grafana annotation successfully inserted");
-
 }
 
 async function executeDataChannel(conf) {
     return await dataChannelConnection(conf);
 }
 
+const ts = 1483228800000;
+
 function onResult(i, conf) {
     const tagList = createTagList(conf);
 
-    const qstring = i.reduce((acc, cv) => {
+    const qstring = i.result.reduce((acc, cv) => {
         const diff = cv.time_received - cv.time_send;
         acc += `test_latency,${tagList.join(",")} value=${diff} ${cv.time_received}\n`;
+
+        const delta_t = (cv.time_send - i.cmd.start_experiment);
+        const timeshifted = ts + delta_t;
+        acc += `random,${tagList.join(",")} value=${diff} ${timeshifted}\n`;
         return acc;
     }, "");
 
