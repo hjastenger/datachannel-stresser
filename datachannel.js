@@ -62,43 +62,47 @@ async function datachannel(configuration) {
                 ws.close();
                 res({ dc: dataChannel, cmd: cmd });
             };
-        }).then((og) => {
+        }).then((co) => {
             return new Promise((res, rej) => {
 
                 const index = conf.messages;
                 let received = 0;
-                og.result = [];
+                co.result = [];
 
 
                 let timerIndex = 0;
 
                 const timer = setInterval(() => {
+                    if(!co.cmd.start_experiment) {
+                        co.cmd.start_experiment = Date.now();
+                    }
 
                     if (timerIndex === index) {
+                        co.cmd.end_experiment = Date.now();
                         clearTimeout(timer);
                     } else {
                         const payload = conf.payload;
-                        payload._metadata = {};
+                        // payload._metadata = {};
                         payload.time_send = Date.now();
-                        payload._metadata.time_send = Date.now();
-                        og.dc.send(JSON.stringify(payload));
+                        // payload._metadata.time_send = Date.now();
+                        co.dc.send(JSON.stringify(payload));
                         timerIndex += 1;
                     }
                 }, conf.interval);
 
-                og.dc.onerror = (err) => {
+                co.dc.onerror = (err) => {
                     rej(err);
                 };
 
-                og.dc.onmessage = (event) => {
+                co.dc.onmessage = (event) => {
                     const event_data = JSON.parse(event.data);
                     event_data.time_received = Date.now();
-                    og.result.push(event_data);
+                    co.result.push(event_data);
                     received += 1;
 
                     if (received === conf.messages) {
-                        og.dc.close();
-                        res(og);
+                        co.dc.close();
+                        res(co);
                     }
                 };
             });
