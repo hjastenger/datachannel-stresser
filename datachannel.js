@@ -12,10 +12,10 @@ async function datachannel(configuration) {
     function inPage(conf) {
         function getReliabilityConfiguration() {
             const relConf = { ordered: conf.ordered };
-            if(conf.retransmits) {
+            if(conf.retransmits !== undefined) {
                 relConf.maxRetransmits = conf.retransmits;
-            } else if(conf.retransmitTimes) {
-                relConf.maxRetransmitTimes = conf.retransmitTimes;
+            } else if(conf.retransmitTimes !== undefined) {
+                relConf.maxRetransmitTime = conf.retransmitTimes;
             }
             return relConf;
         }
@@ -111,13 +111,16 @@ async function datachannel(configuration) {
                     // messages that are send. This way an unreliable datachannel will never resolve because it keeps
                     // waiting for the dropped message. Adding a hard timeout is the only solution.
                     let timeoutResolver;
-                    if(conf.retransmits || conf.retransmitTimes) {
+                    if(conf.retransmits !== undefined || conf.retransmitTimes !== undefined) {
                         if(timeoutResolver) {
                             clearTimeout(timeoutResolver);
                         }
                         timeoutResolver = setTimeout(() => {
+                            co.cmd.droppedMessages = conf.messages - received;
+                            co.cmd.receivedMessages = received;
+                            co.dc.close();
                             res(co);
-                        }, 5000)
+                        }, 15000);
                     }
 
                     const event_data = JSON.parse(event.data);
