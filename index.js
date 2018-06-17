@@ -114,9 +114,14 @@ async function execute(conf) {
     tags.push("experiment");
     const times = { start: [], end:[] };
 
+
+    // Multiple connections could be started, making it harder to define the starting point. Therefor
+    // get all the startings points of the different connections and select the lowest, same for end point.
+    // The only difference is that the amount of succeeded connections in an unreliable configuration could
+    // vary. 
     await Promise.all(result.map((connection) => {
         times.start.push(connection.result[0].time_received);
-        times.end.push(connection.result[configuration.messages-1].time_received);
+        times.end.push(connection.result[(connection.cmd.receivedMessages||conf.messages)-1].time_received);
 
         return onResult(connection, conf);
     }));
