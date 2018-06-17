@@ -140,7 +140,7 @@ const ts = 1483228800000;
 function onResult(i, conf) {
     const tagList = createTagList(conf);
 
-    const qstring = i.result.reduce((acc, cv) => {
+    let qstring = i.result.reduce((acc, cv) => {
         const diff = cv.time_received - cv.time_send;
         acc += `test_latency,${tagList.join(",")} value=${diff} ${cv.time_received}\n`;
 
@@ -149,6 +149,10 @@ function onResult(i, conf) {
         acc += `random,${tagList.join(",")} value=${diff} ${timeshifted}\n`;
         return acc;
     }, "");
+
+    if(conf.protocol === "datachannel") {
+        qstring += `dropped_messages,${tagList.join(",")} value=${i.cmd.droppedMessages || 0}\n`;
+    }
 
     return postData(qstring);
 }
