@@ -17,6 +17,8 @@ const {
 const fs = require('fs');
 
 const dataChannelConnection = require('./datachannel.js');
+const websocketConnection = require('./websocket.js');
+
 
 const myFormat = printf(info => {
     return `${info.timestamp} ${info.level}: ${info.message}`;
@@ -44,6 +46,7 @@ program
     .option('-u, --url <url>', 'Website URL')
     .option('-w, --wsUrl <url>', 'websocket url used for signalling')
     .option('-m, --messages <int>', 'number of messages to be send', parseInt)
+    .option('-r, --repeat <int>', 'number of repeats', parseInt)
     .option('-i, --interval <int>', 'interval in which the messages are send', parseInt)
     .option('-d, --payload <file>', 'location of json blob to be used for communicating')
     .option('-o, --ordered <boolean>', 'whether to send the messages in an ordered fashion', parseBoolean)
@@ -63,6 +66,7 @@ const defaultConfiguration = {
     protocol: "datachannel",
     concurrent_connections: 1,
     messages: 10,
+    repeat: 1,
     interval: 300,
     ordered: true,
     payload: {}
@@ -80,11 +84,13 @@ const configuration = {
     messages: program.messages || defaultConfiguration.messages,
     interval: program.interval || defaultConfiguration.interval,
     ordered: program.ordered && defaultConfiguration.ordered,
+    repeat: program.repeat || defaultConfiguration.repeat,
     retransmits: program.retransmitTimes,
     retransmitTimes: program.retransmitTimeout,
     payload: (program.payload && loadJSON(program.payload)) || defaultConfiguration.payload,
     protocol: program.protocol || defaultConfiguration.protocol,
     optional: program.optional,
+
 };
 
 function createTagList(conf) {
@@ -100,39 +106,56 @@ function createTagList(conf) {
 }
 
 async function execute(conf) {
-    let result = [];
-    switch(configuration.protocol) {
-        case "datachannel":
-            result = await executeDataChannel(conf);
-            break;
-        default:
-            logger.error(`protocol ${program.protocol} not recognized!`);
-            process.exit(1);
+    for(let x = 1; x <= conf.repeat; x++) {
+        conf.connection_nr = x;
+        let result = [];
+        switch (configuration.protocol) {
+            case "datachannel":
+                result = await executeDataChannel(conf);
+                break;
+            case "websocket":
+                result = await executeWebsocket(conf);
+                break;
+            default:
+                logger.error(`protocol ${program.protocol} not recognized!`);
+                process.exit(1);
+        }
+
+        const tags = createTagList(conf);
+        tags.push("experiment");
+        const times = {start: [], end: []};
+
+
+        // Multiple connections could be started, making it harder to define the starting point. Therefor
+        // get all the startings points of the different connections and select the lowest, same for end point.
+        // The only difference is that the amount of succeeded connections in an unreliable configuration could
+        // vary.
+        await Promise.all(result.map((connection) => {
+            times.start.push(connection.result[0].time_received);
+            times.end.push(connection.result[(connection.cmd.receivedMessages || conf.messages) - 1].time_received);
+
+            return onResult(connection, conf);
+        }));
+
+        logger.info("InfluxDB query successfully inserted");
+        await postAnnotation(Math.min(...times.start), Math.max(...times.end), tags);
+        logger.info("Grafana annotation successfully inserted");
+
+        logger.info(`Successfully finished round ${x} of ${conf.repeat}!`);
     }
-
-    const tags = createTagList(conf);
-    tags.push("experiment");
-    const times = { start: [], end:[] };
-
-
-    // Multiple connections could be started, making it harder to define the starting point. Therefor
-    // get all the startings points of the different connections and select the lowest, same for end point.
-    // The only difference is that the amount of succeeded connections in an unreliable configuration could
-    // vary. 
-    await Promise.all(result.map((connection) => {
-        times.start.push(connection.result[0].time_received);
-        times.end.push(connection.result[(connection.cmd.receivedMessages||conf.messages)-1].time_received);
-
-        return onResult(connection, conf);
-    }));
-
-    logger.info("InfluxDB query successfully inserted");
-    await postAnnotation(Math.min(...times.start), Math.max(...times.end), tags);
-    logger.info("Grafana annotation successfully inserted");
 }
 
 async function executeDataChannel(conf) {
     return await dataChannelConnection(conf);
+}
+
+async function executeWebsocket(conf) {
+    try {
+        return await websocketConnection(conf);
+    } catch(e) {
+        console.log("Failing to execute websocket");
+        console.log(e);
+    }
 }
 
 const ts = 1483228800000;
@@ -146,7 +169,7 @@ function onResult(i, conf) {
 
         const delta_t = (cv.time_send - i.cmd.start_experiment);
         const timeshifted = ts + delta_t;
-        acc += `random,${tagList.join(",")} value=${diff} ${timeshifted}\n`;
+        acc += `test_timeshift,${tagList.join(",")} value=${diff} ${timeshifted}\n`;
         return acc;
     }, "");
 
@@ -202,3 +225,18 @@ function loadJSON(location) {
 }
 
 execute(configuration);
+// console.log(getReliabilityConfiguration(configuration));
+
+
+function getReliabilityConfiguration(conf) {
+    const relConf = { ordered: conf.ordered };
+    console.log(conf)
+    if(conf.retransmits !== undefined) {
+        console.log("wat")
+        relConf.maxRetransmits = conf.retransmits;
+        // relConf["maxRetransmits"] = conf.retransmits;
+    } else if(conf.retransmitTimes !== undefined) {
+        relConf.maxRetransmitTimes = conf.retransmitTimes;
+    }
+    return relConf;
+}
