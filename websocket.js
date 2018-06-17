@@ -1,54 +1,82 @@
 const puppeteer = require('puppeteer');
 
- async function webSocketConnection() {
+async function websocket(configuration) {
     const browser = await puppeteer.launch();
-    const page = await browser.newPage();
-    await page.goto('http://localhost:9000/empty');
 
-    await page.exposeFunction("doSomething", () => {
-        console.log("just do it")
-    });
-    const websocket_url = "ws://localhost:9000/websocket_ping";
-    const result = await websocketSession(websocket_url, 10);
+    const pages = await Promise.all(Array.from({length: configuration.concurrent_connections}, (x, i) => i).map(() => {
+        return browser.newPage()
+    }));
 
-    result.map((i) => {
-        console.log(i.time_received - i.time_send)
-    });
+    await Promise.all(pages.map((p) => p.goto(configuration.url)));
 
+    function inPage(conf) {
+        return new Promise((res, rej) => {
+            const cmd = {};
+
+            const ws = new WebSocket(conf.ws_url);
+            ws.onopen = () => {
+                res({ ws: ws, cmd: cmd });
+            };
+
+            ws.onerror = (err) => {
+                rej(err);
+            };
+        }).then((co) => {
+            return new Promise((res, rej) => {
+
+                const index = conf.messages;
+                let received = 0;
+                co.result = [];
+
+
+                let timerIndex = 0;
+
+                const timer = setInterval(() => {
+                    if(!co.cmd.start_experiment) {
+                        co.cmd.start_experiment = Date.now();
+                    }
+
+                    if (timerIndex === index) {
+                        co.cmd.end_experiment = Date.now();
+                        clearTimeout(timer);
+                    } else {
+                        const payload = conf.payload;
+                        // payload._metadata = {};
+                        payload.time_send = Date.now();
+                        // payload._metadata.time_send = Date.now();
+                        co.ws.send(JSON.stringify(payload));
+                        timerIndex += 1;
+                    }
+                }, conf.interval);
+
+                co.ws.onerror = (err) => {
+                    rej(err);
+                };
+
+                co.ws.onmessage = (event) => {
+
+                    const event_data = JSON.parse(event.data);
+                    event_data.time_received = Date.now();
+                    co.result.push(event_data);
+                    received += 1;
+
+                    if (received === conf.messages) {
+                        co.ws.close();
+                        res(co);
+                    }
+                };
+            });
+        });
+    }
+
+    const result = await Promise.all(pages.map((page) => {
+        return page.evaluate(inPage, configuration)
+    }));
+
+    await Promise.all(pages.map((p) => p.close()));
     await browser.close();
 
-    function websocketSession(websocket_url, connections) {
-        return page.evaluate((location, connects) => {
-            function websocket_call() {
-                return new Promise((res, rej) => {
-                    const ws = new WebSocket(location);
-                    ws.onopen = () => {
-                        const data = {
-                            data: "message",
-                            time_send: Date.now()
-                        };
-                        ws.send(JSON.stringify(data));
-                        res(ws);
-                    };
-                    ws.onerror = (err) => {
-                        rej(err);
-                    }
-                }).then((ws) => {
-                    return new Promise((res) => {
-                        ws.onmessage = (event) => {
-                            res(JSON.parse(event.data));
-                            ws.close();
-                        };
-                    });
-                })
-            }
-
-            return Promise.all(Array.from({length: connects}, (x, i) => i).map(() => {
-                return websocket_call()
-            }));
-
-        }, websocket_url, connections);
-    }
+    return result;
 }
 
-module.exports = webSocketConnection;
+module.exports = websocket;
