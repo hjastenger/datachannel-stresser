@@ -131,8 +131,8 @@ async function execute(conf) {
         // The only difference is that the amount of succeeded connections in an unreliable configuration could
         // vary.
         await Promise.all(result.map((connection) => {
-            times.start.push(connection.result[0].time_received);
-            times.end.push(connection.result[(connection.cmd.receivedMessages || conf.messages) - 1].time_received);
+            times.start.push(connection.cmd.start_experiment);
+            times.end.push(connection.cmd.end_experiment);
 
             return onResult(connection, conf);
         }));
