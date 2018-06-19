@@ -89,16 +89,14 @@ async function datachannel(configuration) {
                         co.cmd.start_experiment = Date.now();
                     }
 
+                    const payload = conf.payload;
+                    payload.time_send = Date.now();
+
+                    co.dc.send(JSON.stringify(payload));
+                    timerIndex += 1;
+
                     if (timerIndex === index) {
-                        co.cmd.end_experiment = Date.now();
                         clearTimeout(timer);
-                    } else {
-                        const payload = conf.payload;
-                        // payload._metadata = {};
-                        payload.time_send = Date.now();
-                        // payload._metadata.time_send = Date.now();
-                        co.dc.send(JSON.stringify(payload));
-                        timerIndex += 1;
                     }
                 }, conf.interval);
 
