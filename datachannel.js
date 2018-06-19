@@ -128,6 +128,7 @@ async function datachannel(configuration) {
                         }
                         window.timeoutResolver = setTimeout(() => {
                             co.cmd.droppedMessages = conf.messages - received;
+                            co.cmd.end_experiment = Date.now();
                             co.cmd.receivedMessages = received;
                             co.dc.close();
                             res(co);
@@ -136,6 +137,7 @@ async function datachannel(configuration) {
 
                     const event_data = JSON.parse(event.data);
 
+                    event_data.time_received = Date.now();
                     window.getTimeDiff(event_data.hr_time_send).then((diff) => {
                         event_data.hr_time_diff = diff;
                     });
@@ -144,6 +146,7 @@ async function datachannel(configuration) {
                     received += 1;
 
                     if (received === conf.messages) {
+                        co.cmd.end_experiment = Date.now();
                         co.dc.close();
                         res(co);
                     }

@@ -57,7 +57,6 @@ async function websocket(configuration) {
                     timerIndex += 1;
 
                     if (timerIndex === index) {
-                        co.cmd.end_experiment = Date.now();
                         clearTimeout(timer);
                     }
 
@@ -70,6 +69,7 @@ async function websocket(configuration) {
                 co.ws.onmessage = (event) => {
 
                     const event_data = JSON.parse(event.data);
+                    event_data.time_received = Date.now();
 
                     window.getTimeDiff(event_data.hr_time_send).then((diff) => {
                         event_data.hr_time_diff = diff;
@@ -80,6 +80,7 @@ async function websocket(configuration) {
 
                     if (received === conf.messages) {
                         co.ws.close();
+                        co.cmd.end_experiment = Date.now();
                         res(co);
                     }
                 };
