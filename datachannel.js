@@ -3,8 +3,17 @@ const puppeteer = require('puppeteer');
 async function datachannel(configuration) {
     const browser = await puppeteer.launch();
 
+    async function createPage(browser) {
+        const page = await browser.newPage();
+
+        await page.exposeFunction('getTime', () => process.hrtime() );
+        await page.exposeFunction('getTimeDiff', (start) => process.hrtime(start) );
+
+        return page
+    }
+
     const pages = await Promise.all(Array.from({length: configuration.concurrent_connections}, (x, i) => i).map(() => {
-        return browser.newPage()
+        return createPage(browser)
     }));
 
     await Promise.all(pages.map((p) => p.goto(configuration.url)));
@@ -92,7 +101,12 @@ async function datachannel(configuration) {
                     const payload = conf.payload;
                     payload.time_send = Date.now();
 
-                    co.dc.send(JSON.stringify(payload));
+                    window.getTime().then((t) => {
+                        payload.hr_time_send = t;
+                    }).then(() => {
+                        co.dc.send(JSON.stringify(payload));
+                    });
+
                     timerIndex += 1;
 
                     if (timerIndex === index) {
@@ -121,7 +135,11 @@ async function datachannel(configuration) {
                     }
 
                     const event_data = JSON.parse(event.data);
-                    event_data.time_received = Date.now();
+
+                    window.getTimeDiff(event_data.hr_time_send).then((diff) => {
+                        event_data.hr_time_diff = diff;
+                    });
+
                     co.result.push(event_data);
                     received += 1;
 

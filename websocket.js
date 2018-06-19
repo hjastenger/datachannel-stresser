@@ -3,8 +3,17 @@ const puppeteer = require('puppeteer');
 async function websocket(configuration) {
     const browser = await puppeteer.launch();
 
+    async function createPage(browser) {
+        const page = await browser.newPage();
+
+        await page.exposeFunction('getTime', () => process.hrtime() );
+        await page.exposeFunction('getTimeDiff', (start) => process.hrtime(start) );
+
+        return page
+    }
+
     const pages = await Promise.all(Array.from({length: configuration.concurrent_connections}, (x, i) => i).map(() => {
-        return browser.newPage()
+        return createPage(browser)
     }));
 
     await Promise.all(pages.map((p) => p.goto(configuration.url)));
@@ -36,17 +45,22 @@ async function websocket(configuration) {
                         co.cmd.start_experiment = Date.now();
                     }
 
+                    const payload = conf.payload;
+                    payload.time_send = Date.now();
+
+                    window.getTime().then((t) => {
+                        payload.hr_time_send = t;
+                    }).then(() => {
+                        co.ws.send(JSON.stringify(payload));
+                    });
+
+                    timerIndex += 1;
+
                     if (timerIndex === index) {
                         co.cmd.end_experiment = Date.now();
                         clearTimeout(timer);
-                    } else {
-                        const payload = conf.payload;
-                        // payload._metadata = {};
-                        payload.time_send = Date.now();
-                        // payload._metadata.time_send = Date.now();
-                        co.ws.send(JSON.stringify(payload));
-                        timerIndex += 1;
                     }
+
                 }, conf.interval);
 
                 co.ws.onerror = (err) => {
@@ -56,7 +70,11 @@ async function websocket(configuration) {
                 co.ws.onmessage = (event) => {
 
                     const event_data = JSON.parse(event.data);
-                    event_data.time_received = Date.now();
+
+                    window.getTimeDiff(event_data.hr_time_send).then((diff) => {
+                        event_data.hr_time_diff = diff;
+                    });
+
                     co.result.push(event_data);
                     received += 1;
 
