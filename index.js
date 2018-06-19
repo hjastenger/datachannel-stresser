@@ -228,18 +228,3 @@ function loadJSON(location) {
 }
 
 execute(configuration);
-// console.log(getReliabilityConfiguration(configuration));
-
-
-function getReliabilityConfiguration(conf) {
-    const relConf = { ordered: conf.ordered };
-    console.log(conf)
-    if(conf.retransmits !== undefined) {
-        console.log("wat")
-        relConf.maxRetransmits = conf.retransmits;
-        // relConf["maxRetransmits"] = conf.retransmits;
-    } else if(conf.retransmitTimes !== undefined) {
-        relConf.maxRetransmitTimes = conf.retransmitTimes;
-    }
-    return relConf;
-}
