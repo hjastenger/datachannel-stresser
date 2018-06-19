@@ -162,14 +162,17 @@ const ts = 1483228800000;
 
 function onResult(i, conf) {
     const tagList = createTagList(conf);
+    const NS_PER_SEC = 1e9;
 
     let qstring = i.result.reduce((acc, cv) => {
-        const diff = cv.time_received - cv.time_send;
-        acc += `test_latency,${tagList.join(",")} value=${diff} ${cv.time_received}\n`;
-
         const delta_t = (cv.time_send - i.cmd.start_experiment);
+
         const timeshifted = ts + delta_t;
-        acc += `test_timeshift,${tagList.join(",")} value=${diff} ${timeshifted}\n`;
+        const nanoseconds = cv.hr_time_diff[0] * NS_PER_SEC + cv.hr_time_diff[1];
+
+        acc += `timeshift,${tagList.join(",")} value=${nanoseconds} ${timeshifted}\n`;
+        acc += `latency,${tagList.join(",")} value=${nanoseconds} ${cv.time_received}\n`;
+
         return acc;
     }, "");
 
