@@ -105,7 +105,53 @@ function createTagList(conf) {
     return tags;
 }
 
+async function executeWarmUp(conf) {
+    logger.info("Starting warm up.");
+    const warmUpConf = Object.assign({}, conf);
+    const msInM = 1000*60;
+    warmUpConf.repeat = 1;
+    warmUpConf.interval = msInM/conf.messages;
+    warmUpConf.optional += "WarmUp";
+    let result = [];
+
+
+    switch (warmUpConf.protocol) {
+        case "datachannel":
+            result = await executeDataChannel(warmUpConf);
+            break;
+        case "websocket":
+            result = await executeWebsocket(warmUpConf);
+            break;
+        default:
+            logger.error(`protocol ${program.protocol} not recognized!`);
+            process.exit(1);
+    }
+
+    const tags = createTagList(warmUpConf);
+    tags.push("experiment");
+    const times = {start: [], end: []};
+
+
+    // Multiple connections could be started, making it harder to define the starting point. Therefor
+    // get all the startings points of the different connections and select the lowest, same for end point.
+    // The only difference is that the amount of succeeded connections in an unreliable configuration could
+    // vary.
+    await Promise.all(result.map((connection) => {
+        times.start.push(connection.cmd.start_experiment);
+        times.end.push(connection.cmd.end_experiment);
+
+        return onResult(connection, warmUpConf);
+    }));
+
+    logger.info("InfluxDB query successfully inserted");
+    await postAnnotation(Math.min(...times.start), Math.max(...times.end), tags);
+    logger.info("Grafana annotation successfully inserted");
+
+    logger.info("Done warming up.")
+}
+
 async function execute(conf) {
+    await executeWarmUp(conf);
     for(let x = 1; x <= conf.repeat; x++) {
         conf.connection_nr = x;
         let result = [];
