@@ -44,7 +44,7 @@ rebootServer
 startApplication
 
 # Unreliable RTO Unordered DC
-node index.js -u http://10.133.58.193:9000/empty -w ws://10.133.58.193:9000/websocket --messages=480 --interval=500 --ordered=false  --retransmit-timeout=0 --concurrent=1 --optional=FifthRoundUnreliableDC --protocol=datachannel --repeat=15 --message-size=5000
+node index.js -u http://10.133.58.193:9000/empty -w ws://10.133.58.193:9000/websocket --messages=480 --interval=500 --ordered=false  --retransmit-timeout=1 --concurrent=1 --optional=FifthRoundUnreliableDC --protocol=datachannel --repeat=15 --message-size=5000
 
 echo "Done for 'unreliable connection in reliable environment'"
 # End
@@ -83,7 +83,7 @@ startApplication
 setPacketLoss 2.5%
 
 # Unreliable RTO Unordered DC
-node index.js -u http://10.133.58.193:9000/empty -w ws://10.133.58.193:9000/websocket --messages=480 --interval=500 --ordered=false  --retransmit-timeout=0 --concurrent=1 --optional=FifthRoundUnreliableDC2.5 --protocol=datachannel --repeat=15 --message-size=5000
+node index.js -u http://10.133.58.193:9000/empty -w ws://10.133.58.193:9000/websocket --messages=480 --interval=500 --ordered=false  --retransmit-timeout=1 --concurrent=1 --optional=FifthRoundUnreliableDC2.5 --protocol=datachannel --repeat=15 --message-size=5000
 
 rebootServer
 startApplication
@@ -136,7 +136,7 @@ startApplication
 setPacketLoss 5.0%
 
 # Unreliable RTO Unordered DC
-node index.js -u http://10.133.58.193:9000/empty -w ws://10.133.58.193:9000/websocket --messages=480 --interval=500 --ordered=false  --retransmit-timeout=0 --concurrent=1 --optional=FifthRoundUnreliableDC5.0 --protocol=datachannel --repeat=15 --message-size=5000
+node index.js -u http://10.133.58.193:9000/empty -w ws://10.133.58.193:9000/websocket --messages=480 --interval=500 --ordered=false  --retransmit-timeout=1 --concurrent=1 --optional=FifthRoundUnreliableDC5.0 --protocol=datachannel --repeat=15 --message-size=5000
 
 rebootServer
 startApplication
