@@ -229,10 +229,11 @@ function onResult(i, conf) {
         const delta_t = (cv.time_send - i.cmd.start_experiment);
 
         const timeshifted = ts + delta_t;
-        const nanoseconds = cv.hr_time_diff[0] * NS_PER_SEC + cv.hr_time_diff[1];
+        // const nanoseconds = cv.hr_time_diff[0] * NS_PER_SEC + cv.hr_time_diff[1];
+        const diff = cv.time_received - cv.time_send;
 
-        acc += `timeshift,${tagList.join(",")} value=${nanoseconds} ${timeshifted}\n`;
-        acc += `latency,${tagList.join(",")} value=${nanoseconds} ${cv.time_received}\n`;
+        acc += `timeshift,${tagList.join(",")} value=${diff} ${timeshifted}\n`;
+        acc += `latency,${tagList.join(",")} value=${diff} ${cv.time_received}\n`;
 
         return acc;
     }, "");
