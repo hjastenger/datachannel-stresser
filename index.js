@@ -46,6 +46,7 @@ program
     .option('-u, --url <url>', 'Website URL')
     .option('-w, --wsUrl <url>', 'websocket url used for signalling')
     .option('-m, --messages <int>', 'number of messages to be send', parseInt)
+    .option('-s, --message-size <int>', 'size of the message in kb', parseInt)
     .option('-r, --repeat <int>', 'number of repeats', parseInt)
     .option('-i, --interval <int>', 'interval in which the messages are send', parseInt)
     .option('-d, --payload <file>', 'location of json blob to be used for communicating')
@@ -87,11 +88,25 @@ const configuration = {
     repeat: program.repeat || defaultConfiguration.repeat,
     retransmits: program.retransmitTimes,
     retransmitTimes: program.retransmitTimeout,
-    payload: (program.payload && loadJSON(program.payload)) || defaultConfiguration.payload,
+    message_size: program.messageSize,
+    payload: getPayload(program),
     protocol: program.protocol || defaultConfiguration.protocol,
     optional: program.optional,
 
 };
+
+function getPayload(conf) {
+    if(conf.payload && conf.messageSize) {
+        logger.error("Conflicting configuration settings, payload and message size can't both be specified");
+        process.kill(1);
+    } else if(conf.payload) {
+        return {data: loadJSON(conf.payload)};
+    } else if(conf.messageSize) {
+        return {data: Buffer.alloc(conf.messageSize).toString()};
+    } else {
+        return {data: defaultConfiguration.payload};
+    }
+}
 
 function createTagList(conf) {
     const blacklist = ["url", "ws_url", "payload"];
